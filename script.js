@@ -138,7 +138,7 @@ $$("[data-go]").forEach(b => b.onclick = () => ir(b.dataset.go));
 /* ================= LISTA BLANCA ================= */
 const wz = $("#wizard");
 let S, W = [];
-const F = { dni: "", imei: "", ok: false }; // lo que escribió el usuario (se conserva al retroceder)
+const F = { dni: "", imei: "", num: "", ok: false }; // lo que escribió el usuario (se conserva al retroceder)
 
 function paso(fn) { W.push({ fn, snap: JSON.stringify(S) }); fn(); }
 function wBack() { W.pop(); const p = W[W.length - 1]; S = JSON.parse(p.snap); p.fn(); }
@@ -165,13 +165,27 @@ function botonContinuar(cb) {
 }
 
 function iniciarLista() {
-  S = { dni: "", n: 1, i: 1, res: [], imei: "", ctx: "", op: "", tipo: "", motivo: "" };
+  S = { lugar: "", dni: "", n: 1, i: 1, res: [], imei: "", ctx: "", op: "", tipo: "", motivo: "", num: "", etq: "" };
   W = [];
-  paso(stepDni);
+  paso(stepLugar);
 }
 
+/* ---- 1. lugar ---- */
+function stepLugar() {
+  render("¿En qué lugar te encuentras?", "");
+  opciones([
+    ["Huancayo", "📍 Estoy en Huancayo"],
+    ["Otro lugar", "🌎 Estoy en otro lugar"]
+  ], l => { S.lugar = l; paso(stepDni); });
+}
+
+/* ---- 2. DNI del titular ---- */
 function stepDni() {
+  const aviso = S.lugar === "Huancayo"
+    ? `<div class="alerta verde">🏬 Como estás en Huancayo, el registro lo haremos de manera <b>presencial</b>.</div>`
+    : `<div class="alerta verde">💻 Como estás en otro lugar, todo el trámite será de manera <b>virtual</b>.</div>`;
   render("Datos del titular", `
+    ${aviso}
     <div class="alerta rojo">🚫 Prohibida la suplantación de identidad. El registro solo lo puede hacer el titular.</div>
     <label class="lbl">Ingresa tu DNI</label>
     <input id="dni" type="text" inputmode="numeric" maxlength="8" placeholder="DNI del titular (8 dígitos)" value="${F.dni}">
@@ -199,7 +213,7 @@ function stepSenal() {
 
 function terminarImei(texto) {
   S.res.push(`IMEI ${S.i}: ${texto}`);
-  S.imei = ""; S.ctx = "";
+  S.imei = ""; S.ctx = ""; S.num = ""; S.etq = "";
   if (S.i < S.n) { S.i++; paso(stepSenal); } else paso(stepResumen);
 }
 
@@ -223,7 +237,8 @@ function stepBloqueo() {
 
 /* ---- planes (compartido) ---- */
 function stepPlanes() {
-  render("Elige tu plan", `<p class="sub">Adquirir una línea nueva de Entel</p>
+  const sub = S.etq ? "Elige el plan al que te pasas en Entel" : "Adquirir una línea nueva de Entel";
+  render("Elige tu plan", `<p class="sub">${sub}</p>
     <div class="planes">${PLANES.map((p, k) => `
       <div class="plan rip ${p.top ? "top" : ""}" role="button" tabindex="0" data-p="${p.p}" style="--d:${k * 70}ms">
         <div class="pp">S/ ${p.p}<small> /mes</small></div>
@@ -232,7 +247,7 @@ function stepPlanes() {
         <span class="sel-btn">Elegir plan</span>
       </div>`).join("")}</div>`);
   $$(".plan", wz).forEach(c => c.onclick = () =>
-    terminarImei(`${S.ctx} - Línea nueva Entel plan S/ ${c.dataset.p}`));
+    terminarImei(`${S.ctx} - ${S.etq || "Línea nueva Entel plan"} S/ ${c.dataset.p}`));
 }
 
 /* ---- SÍ tiene señal ---- */
@@ -263,25 +278,46 @@ function stepTipo() {
   opciones([
     ["postpago", "Soy de " + S.op + " postpago<small>(pago mensual)</small>"],
     ["prepago", "Soy de " + S.op + " prepago<small>(solo hago recargas)</small>"]
-  ], t => { S.tipo = t; paso(stepPromo); });
+  ], t => { S.tipo = t; paso(stepNumero); });
+}
+function stepNumero() {
+  render(`Número de tu línea ${S.op}`, `
+    <p class="sub">Escribe el número de celular que vas a pasar a Entel</p>
+    <input id="num" type="text" inputmode="numeric" maxlength="9" placeholder="Ej: 987654321" value="${F.num || ""}">
+    <div id="err" class="error"></div>`);
+  botonContinuar(() => {
+    const v = $("#num").value.trim();
+    if (!/^9\d{8}$/.test(v)) { $("#err").textContent = "Ingresa un número válido de 9 dígitos que empiece con 9."; return; }
+    F.num = v; S.num = v;
+    if (S.tipo === "postpago") paso(stepPromo);
+    else {
+      // prepago: sin descuento, elige plan normal
+      S.ctx = `${S.imei} (línea ${S.num} de ${S.op})`;
+      S.etq = "Portabilidad de prepago a Entel, plan";
+      paso(stepPlanes);
+    }
+  });
 }
 function stepPromo() {
   render(`🎉 Promo portabilidad desde ${S.op}`,
     `<div class="alerta verde">Plan ilimitado S/ 79.90 a mitad de precio: <b>S/ 39.90 por 6 meses</b>.</div>`);
-  botonContinuar(() => terminarImei(`${S.imei} - Portabilidad desde ${S.op} (${S.tipo}), plan ilimitado S/ 39.90 x 6 meses (luego S/ 79.90)`));
+  botonContinuar(() => terminarImei(
+    `${S.imei} (línea ${S.num} de ${S.op}) - Portabilidad de postpago a Entel, plan ilimitado S/ 39.90 x 6 meses (luego S/ 79.90)`));
 }
 
 /* ---- resumen ---- */
 function stepResumen() {
+  const modalidad = S.lugar === "Huancayo" ? "Huancayo (presencial)" : "Otro lugar (virtual)";
   render("✅ Resumen de tu solicitud", `
+    <p>Lugar: <b>${modalidad}</b></p>
     <p>DNI del titular: <b>${S.dni}</b></p>
     <ul class="resumen">${S.res.map(r => `<li>${r}</li>`).join("")}</ul>`);
   const e = document.createElement("div");
   e.className = "opts";
   e.innerHTML = `<button class="btn wa rip" id="enviar">Enviar por WhatsApp</button><button class="opt rip" id="otra">Nueva solicitud</button>`;
   wz.appendChild(e);
-  $("#enviar").onclick = () => irWA(`Hola, quiero registro en lista blanca.\nDNI del titular: ${S.dni}\n${S.res.join("\n")}`);
-  $("#otra").onclick = () => { F.imei = ""; iniciarLista(); };
+  $("#enviar").onclick = () => irWA(`Hola, quiero registro en lista blanca.\nLugar: ${modalidad}\nDNI del titular: ${S.dni}\n${S.res.join("\n")}`);
+  $("#otra").onclick = () => { F.imei = ""; F.num = ""; iniciarLista(); };
 }
 
 /* ================= CONTADO ================= */
@@ -359,10 +395,6 @@ document.addEventListener("pointerout", e => {
 document.addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.classList.contains("plan")) e.target.click();
 });
-
-
-
-
 
 /* ================= CARRUSEL ================= */
 const WA_BANNER = "51933088912";
