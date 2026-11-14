@@ -401,7 +401,8 @@ const WA_BANNER = "51933088912";
 // Para agregar una imagen nueva: copia una línea, pon la ruta y el mensaje
 const BANNERS = [
   { img: "img/banner1.jpg", msg: "Hola, vi su publicidad de Páginas web a medida y quiero cotizar." },
-  { img: "img/banner2.jpg", msg: "Hola, vi su publicidad de Cableado profesional y quiero solicitar el servicio." }
+  { img: "img/banner2.jpg", msg: "Hola, vi su publicidad de Cableado profesional y quiero solicitar el servicio." },
+  { img: "img/banner3.jpg", msg: "Hola, vi su publicidad de Mantenimiento y reparación de laptops y computadoras y quiero solicitar el servicio." }
 ];
 
 (function () {
